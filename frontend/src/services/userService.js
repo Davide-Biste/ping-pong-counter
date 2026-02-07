@@ -1,24 +1,27 @@
-import api from './api';
+import { invoke } from '@tauri-apps/api/core';
 
 export const userService = {
     getAll: async () => {
-        const response = await api.get('/users');
-        return response.data;
+        return await invoke('get_users');
     },
-    createQuick: async (name, color, icon) => {
-        const response = await api.post('/users/quick', { name, color, icon });
-        return response.data;
+    createQuick: async (name, color, icon, nickname = "") => {
+        return await invoke('create_user', { name, color, icon, nickname });
     },
     update: async (id, name, color, icon) => {
-        const response = await api.put(`/users/${id}`, { name, color, icon });
-        return response.data;
+        // Rust expects integer ID, ensure it is converted if it's a string
+        return await invoke('update_user', { id: Number(id), name, color, icon });
     },
     checkHealth: async () => {
+        // Since it's local, we assume it's healthy if we can call invoke.
+        // We could call a ping command, but getAll users is lightweight enough for now.
         try {
-            await api.get('/users'); // Simple check
+            await invoke('get_users');
             return true;
         } catch {
             return false;
         }
+    },
+    getUserStatistics: async (userId) => {
+        return await invoke('get_user_statistics', { userId: Number(userId) });
     }
 };

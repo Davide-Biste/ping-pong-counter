@@ -1,12 +1,10 @@
-import api from './api';
+import { invoke } from '@tauri-apps/api/core';
 
 export const gameModeService = {
     getAll: async () => {
-        const response = await api.get('/gamemodes');
-        return response.data;
+        return await invoke('get_game_modes');
     },
     create: async (data) => {
-        const response = await api.post('/gamemodes', data);
-        return response.data;
+        return await invoke('create_game_mode', { ...data });
     }
 };

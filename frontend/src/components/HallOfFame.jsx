@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { Trophy, Medal, Crown, ArrowLeft, Skull, Swords, Percent } from 'lucide-react';
 import { userService } from '../services/userService';
 import CountUp from './react-bits/CountUp.tsx';
-import {getIconComponent} from "@/lib/gameConfig.ts";
+import { getIconComponent } from "@/lib/gameConfig.ts";
+import PlayerProfile from './PlayerProfile';
 
 
 const HallOfFame = () => {
     const navigate = useNavigate();
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedUserId, setSelectedUserId] = useState(null);
 
     useEffect(() => {
         const loadUsers = async () => {
@@ -27,7 +29,7 @@ const HallOfFame = () => {
     }, []);
 
     const getRankStyle = (index) => {
-        switch(index) {
+        switch (index) {
             case 0: return "border-yellow-500/50 bg-yellow-950/20 shadow-[0_0_30px_rgba(234,179,8,0.2)]";
             case 1: return "border-slate-400/50 bg-slate-900/40 shadow-[0_0_20px_rgba(148,163,184,0.2)]";
             case 2: return "border-amber-700/50 bg-orange-950/20 shadow-[0_0_20px_rgba(180,83,9,0.2)]";
@@ -36,7 +38,7 @@ const HallOfFame = () => {
     };
 
     const RankBadge = ({ index }) => {
-        if (index === 0) return <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-yellow-500 text-black font-black px-4 py-1 rounded-full text-xs shadow-lg uppercase tracking-widest flex items-center gap-2"><Crown size={14}/> Champion</div>;
+        if (index === 0) return <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-yellow-500 text-black font-black px-4 py-1 rounded-full text-xs shadow-lg uppercase tracking-widest flex items-center gap-2"><Crown size={14} /> Champion</div>;
         if (index === 1) return <div className="absolute -top-4 -left-4 bg-slate-300 text-black font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-neutral-900">2</div>;
         if (index === 2) return <div className="absolute -top-4 -left-4 bg-amber-600 text-white font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-neutral-900">3</div>;
         return <div className="font-mono text-neutral-600 font-bold text-xl w-8 text-center">#{index + 1}</div>;
@@ -74,7 +76,8 @@ const HallOfFame = () => {
                     return (
                         <div
                             key={user._id}
-                            className={`relative group rounded-2xl border p-4 md:p-6 flex flex-col md:flex-row items-center gap-6 transition-all duration-300 hover:scale-[1.01] animate-in slide-in-from-bottom-4
+                            onClick={() => setSelectedUserId(user._id)}
+                            className={`relative group rounded-2xl border p-4 md:p-6 flex flex-col md:flex-row items-center gap-6 transition-all duration-300 hover:scale-[1.01] cursor-pointer animate-in slide-in-from-bottom-4
                                 ${getRankStyle(index)}
                             `}
                             style={{ animationDelay: `${index * 100}ms` }}
@@ -140,12 +143,20 @@ const HallOfFame = () => {
 
                 {users.length === 0 && !loading && (
                     <div className="text-center py-20 opacity-50">
-                        <Skull size={48} className="mx-auto mb-4 text-neutral-600"/>
+                        <Skull size={48} className="mx-auto mb-4 text-neutral-600" />
                         <p className="text-xl font-bold text-neutral-500">No warriors found.</p>
                         <p className="text-sm text-neutral-600">Be the first to enter the arena.</p>
                     </div>
                 )}
             </div>
+
+            {selectedUserId && (
+                <PlayerProfile
+                    userId={selectedUserId}
+                    isOpen={!!selectedUserId}
+                    onClose={() => setSelectedUserId(null)}
+                />
+            )}
         </div>
     );
 };
