@@ -57,13 +57,19 @@ const Dashboard = () => {
 
                 {/* Footer Links / Fun stats */}
                 <div className="mt-12 flex gap-4 opacity-60 hover:opacity-100 transition-opacity duration-300">
-                    <button className="flex items-center gap-2 px-4 py-2 bg-neutral-900/50 border border-neutral-800 rounded-full text-xs font-mono text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors">
-                        <Trophy size={12} className="text-yellow-500"/>
+                    <button
+                        onClick={() => navigate('/hall-of-fame')}
+                        className="flex items-center gap-2 px-4 py-2 bg-neutral-900/50 border border-neutral-800 rounded-full text-xs font-mono text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
+                    >
+                        <Trophy size={12} className="text-yellow-500" />
                         HALL OF FAME
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-neutral-900/50 border border-neutral-800 rounded-full text-xs font-mono text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors">
-                        <Users size={12} className="text-blue-500"/>
-                        BETTING (SOON)
+                    <button
+                        onClick={() => navigate('/players')}
+                        className="flex items-center gap-2 px-4 py-2 bg-neutral-900/50 border border-neutral-800 rounded-full text-xs font-mono text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
+                    >
+                        <Users size={12} className="text-blue-500" />
+                        MANAGE PLAYERS
                     </button>
                 </div>
 

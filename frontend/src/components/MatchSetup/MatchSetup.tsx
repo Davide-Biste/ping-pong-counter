@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Play, Plus, Swords, ArrowRightLeft } from "lucide-react";
+import { Button as ButtonOriginal } from "@/components/ui/button";
+import { Dialog as DialogOriginal, DialogContent as DialogContentOriginal, DialogHeader as DialogHeaderOriginal, DialogTitle as DialogTitleOriginal, DialogDescription as DialogDescriptionOriginal, DialogFooter as DialogFooterOriginal } from "@/components/ui/dialog";
+import { Input as InputOriginal } from "@/components/ui/input";
+import { Play, Plus, Swords, ArrowRightLeft, ChevronRight, ChevronLeft, Settings, Trophy, User, Users } from "lucide-react";
 import { userService } from "@/services/userService";
 import { gameModeService } from "@/services/gameModeService";
 import { matchService } from "@/services/matchService";
@@ -11,7 +11,17 @@ import DecryptedText from "../react-bits/DecryptedText";
 import { cn } from "@/lib/utils";
 import { AVAILABLE_COLORS, AVAILABLE_ICONS } from "@/lib/gameConfig";
 import GameSelect from "@/components/GameSelect.tsx";
-import GameModeCarousel from "@/components/GameModeCarousel";
+import { motion, AnimatePresence } from 'framer-motion';
+
+// Bypass TS checks for JS components
+const Button = ButtonOriginal as any;
+const Dialog = DialogOriginal as any;
+const DialogContent = DialogContentOriginal as any;
+const DialogHeader = DialogHeaderOriginal as any;
+const DialogTitle = DialogTitleOriginal as any;
+const DialogDescription = DialogDescriptionOriginal as any;
+const DialogFooter = DialogFooterOriginal as any;
+const Input = InputOriginal as any;
 
 const MatchSetup = () => {
     const navigate = useNavigate();
@@ -19,30 +29,36 @@ const MatchSetup = () => {
     const [gameModes, setGameModes] = useState<any[]>([]);
     const [isTransitioning, setIsTransitioning] = useState(false);
 
+    // Wizard Step: 0 = Mode, 1 = Players, 2 = Config/Start
+    const [step, setStep] = useState(0);
+
     // Selection State
     const [p1, setP1] = useState("");
     const [p2, setP2] = useState("");
+    const [p3, setP3] = useState(""); // Partner for P1
+    const [p4, setP4] = useState(""); // Partner for P2
+    const [isDoubles, setIsDoubles] = useState(false);
     const [modeId, setModeId] = useState("");
 
     // New Match Config Overrides
     const [serveType, setServeType] = useState('free');
     const [servesInDeuce, setServesInDeuce] = useState(1);
 
-    // When game mode changes, update defaults
+    // Update defaults when mode changes
     useEffect(() => {
-        if(modeId && gameModes.length) {
+        if (modeId && gameModes.length) {
             const mode = gameModes.find(m => m._id === modeId);
-            if(mode) {
+            if (mode) {
                 setServeType(mode.serveType || 'free');
                 setServesInDeuce(mode.servesInDeuce || 1);
             }
         }
     }, [modeId, gameModes]);
 
-    // Reference per il bottone di Start
+    // Start Button Ref for focus
     const startButtonRef = useRef<HTMLButtonElement>(null);
 
-    // New User Dialog State
+    // User Dialog State
     const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
     const [newUserName, setNewUserName] = useState("");
     const [newUserColor, setNewUserColor] = useState("blue");
@@ -55,7 +71,7 @@ const MatchSetup = () => {
                 const [u, m] = await Promise.all([userService.getAll(), gameModeService.getAll()]);
                 setUsers(u || []);
                 setGameModes(m || []);
-                if (m && m.length > 0) setModeId(m[0]._id);
+                // Don't auto-set modeId, let user choose in step 0
             } catch (e) {
                 console.error("Error loading data", e);
             }
@@ -63,22 +79,19 @@ const MatchSetup = () => {
         loadData();
     }, []);
 
-    // EFFETTO FOCUS AUTOMATICO
-    // Quando p1, p2 e modeId sono tutti presenti, sposta il focus sul bottone FIGHT
+    // Focus start button on step 2
     useEffect(() => {
-        if (p1 && p2 && startButtonRef.current) {
-            // Un piccolo timeout aiuta a garantire che il rendering sia completo se ci sono animazioni
-            const timer = setTimeout(() => {
+        if (step === 2 && startButtonRef.current) {
+            setTimeout(() => {
                 startButtonRef.current?.focus();
-            }, 100);
-            return () => clearTimeout(timer);
+            }, 300);
         }
-    }, [p1, p2]);
+    }, [step]);
 
     const handleStart = async () => {
         if (!p1 || !p2 || !modeId) return;
         if (p1 === p2) {
-            alert("Un vero guerriero non combatte contro se stesso.");
+            alert("Shadow boxing is not supported yet.");
             return;
         }
 
@@ -86,13 +99,18 @@ const MatchSetup = () => {
 
         try {
             const minAnimationTime = new Promise(resolve => setTimeout(resolve, 3000));
-            // Send overrides
-            const overrides = { serveType, servesInDeuce };
+            const overrides = {
+                serveType,
+                servesInDeuce,
+                player3Id: isDoubles ? p3 : null,
+                player4Id: isDoubles ? p4 : null
+            };
             const startMatchPromise = matchService.startMatch(p1, p2, modeId, overrides);
             const [_, match] = await Promise.all([minAnimationTime, startMatchPromise]);
             navigate(`/game/${match._id}`);
         } catch (err) {
             console.error("Failed to start match", err);
+            alert(`Failed to start match: ${err}`);
             setIsTransitioning(false);
         }
     };
@@ -115,258 +133,327 @@ const MatchSetup = () => {
     };
 
     return (
-        <div className="min-h-screen bg-neutral-900 text-white flex items-center justify-center p-4">
+        <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-4 overflow-hidden relative selection:bg-green-500/30">
             {/* Background Ambient Effects */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-900/20 rounded-full blur-[120px]" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-900/20 rounded-full blur-[120px]" />
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:50px_50px] opacity-20" />
+                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-900/10 rounded-full blur-[120px]" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-900/10 rounded-full blur-[120px]" />
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:50px_50px] opacity-20" />
             </div>
 
             {/* Loading Overlay */}
-            {isTransitioning && (
-                <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center animate-in fade-in duration-500">
-                    <div className="w-full max-w-md space-y-8 p-8 relative">
-                        <div className="absolute inset-0 bg-green-500/5 blur-3xl rounded-full"></div>
-                        <div className="text-center space-y-4 relative z-10">
-                            <DecryptedText
-                                text="INITIALIZING BATTLE ARENA..."
-                                speed={70}
-                                animateOn="view"
-                                className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600 tracking-tighter"
-                            />
-                            <p className="text-emerald-500/60 text-sm font-mono animate-pulse tracking-[0.2em]">
-                                SYSTEM SYNC: <span className="text-green-400 font-bold">COMPLETE</span>
-                            </p>
+            <AnimatePresence>
+                {isTransitioning && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center"
+                    >
+                        <div className="w-full max-w-md space-y-8 p-8 relative">
+                            <div className="absolute inset-0 bg-green-500/5 blur-3xl rounded-full"></div>
+                            <div className="text-center space-y-4 relative z-10">
+                                <DecryptedText
+                                    text="INITIALIZING BATTLE ARENA..."
+                                    speed={70}
+                                    animateOn="view"
+                                    className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600 tracking-tighter"
+                                />
+                                <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden mt-8">
+                                    <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400 shadow-[0_0_15px_#10b981] animate-[loading_2.5s_ease-in-out_forwards]" style={{ width: '0%' }}></div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400 shadow-[0_0_15px_#10b981] animate-[loading_2.5s_ease-in-out_forwards]" style={{width: '0%'}}></div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Main Wizard Container */}
+            <div className="w-full max-w-5xl z-10 relative">
+
+                {/* Header / Progress */}
+                <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-4">
+                        {step > 0 && (
+                            <button
+                                onClick={() => setStep(step - 1)}
+                                className="p-2 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                                aria-label="Go back to previous step"
+                            >
+                                <ChevronLeft />
+                            </button>
+                        )}
+                        <div>
+                            <h1 className="text-3xl font-black italic tracking-tighter text-white">
+                                {step === 0 && "SELECT PROTOCOL"}
+                                {step === 1 && "CHOOSE COMBATANTS"}
+                                {step === 2 && "FINALIZE PARAMETERS"}
+                            </h1>
+                            <div className="text-xs font-mono text-neutral-500 uppercase tracking-widest flex items-center gap-2 mt-1">
+                                <span className={cn(step >= 0 ? "text-green-500" : "text-neutral-700")}>01 Mode</span>
+                                <span className="text-neutral-800">/</span>
+                                <span className={cn(step >= 1 ? "text-green-500" : "text-neutral-700")}>02 Players</span>
+                                <span className="text-neutral-800">/</span>
+                                <span className={cn(step >= 2 ? "text-green-500" : "text-neutral-700")}>03 Start</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            )}
 
-            {/* Main Content */}
-            <div className="w-full max-w-5xl relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                <div className="min-h-[500px]">
+                    <AnimatePresence mode="wait">
 
-                {/* Header */}
-                <div className="text-center mb-10 space-y-2">
-                    <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40 drop-shadow-2xl">
-                        MATCH SETUP
-                    </h1>
-                    <p className="text-neutral-500 font-mono text-sm tracking-widest uppercase">
-                        Configure battle parameters
-                    </p>
-                </div>
-
-                {/* Players & Mode Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-
-                    {/* LEFT COLUMN: Players (Takes 5 cols) */}
-                    <div className="lg:col-span-5 space-y-6">
-                        <div className="bg-neutral-900/50 border border-white/10 backdrop-blur-md rounded-3xl p-6 md:p-8 shadow-2xl relative">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-transparent to-red-500 opacity-50 rounded-t-3xl" />
-
-                            <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                                <Swords className="text-neutral-500" size={20}/>
-                                <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-neutral-400">COMBATANTS</span>
-                            </h2>
-
-                            <div className="space-y-6">
-                                <GameSelect
-                                    label="CHALLENGER 01 (Left Side)"
-                                    placeholder="Select P1"
-                                    options={users}
-                                    value={p1}
-                                    onChange={setP1}
-                                    type="user"
-                                    disabledValues={p2 ? [p2] : []}
-                                />
-
-                                {/* SWAP CONTROLS */}
-                                <div className="relative flex items-center justify-center py-2 group/swap">
-                                    {/* Linee decorative */}
-                                    <div className="absolute left-0 right-1/2 h-px bg-gradient-to-r from-transparent via-neutral-700 to-neutral-700 opacity-50 w-[40%]" />
-                                    <div className="absolute right-0 left-1/2 h-px bg-gradient-to-l from-transparent via-neutral-700 to-neutral-700 opacity-50 w-[40%]" />
-
-                                    {/* Pulsante Swap */}
+                        {/* STEP 0: GAME MODE */}
+                        {step === 0 && (
+                            <motion.div
+                                key="step0"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                            >
+                                {gameModes.map(mode => (
                                     <button
-                                        onClick={() => {
-                                            // Scambia i valori
-                                            const temp = p1;
-                                            setP1(p2);
-                                            setP2(temp);
-                                        }}
-                                        disabled={!p1 && !p2} // Disabilita se vuoti
+                                        key={mode._id}
+                                        onClick={() => { setModeId(mode._id); setStep(1); }}
                                         className={cn(
-                                            "relative z-10 w-10 h-10 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-500 flex items-center justify-center transition-all duration-300",
-                                            (!p1 && !p2)
-                                                ? "opacity-50 cursor-not-allowed"
-                                                : "hover:bg-neutral-800 hover:text-white hover:border-white/30 hover:scale-110 active:scale-90 shadow-lg cursor-pointer"
+                                            "group relative bg-neutral-900/40 border-2 rounded-3xl p-8 cursor-pointer transition-all duration-300 text-left outline-none",
+                                            "focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:border-green-500",
+                                            modeId === mode._id ? "border-green-500/50 bg-green-950/20 shadow-[0_0_30px_rgba(34,197,94,0.1)]" : "border-white/5 hover:border-white/20 hover:bg-neutral-900/80 hover:shadow-xl"
                                         )}
-                                        title="Swap Sides"
                                     >
-                                        {/* Icona che ruota al click (usando active o group-hover) */}
-                                        <ArrowRightLeft
-                                            size={16}
-                                            className={cn(
-                                                "transition-transform duration-500 ease-in-out",
-                                                // Ruota di 180 gradi quando si passa sopra col mouse
-                                                "group-hover/swap:rotate-180"
-                                            )}
-                                        />
+                                        <div className="flex flex-col h-full justify-between">
+                                            <div>
+                                                <div className="w-12 h-12 rounded-xl bg-neutral-800 flex items-center justify-center mb-6 group-hover:bg-white group-hover:text-black transition-colors">
+                                                    <Trophy size={24} />
+                                                </div>
+                                                <h3 className="text-2xl font-black italic uppercase mb-2 text-white group-hover:text-green-400 transition-colors">{mode.name}</h3>
+                                                <p className="text-neutral-500 text-sm leading-relaxed">{mode.rulesDescription || "Standard competitive table tennis rules."}</p>
+                                            </div>
+                                            <div className="mt-8 pt-6 border-t border-white/5 flex gap-4 text-xs font-mono uppercase text-neutral-400">
+                                                <span className="flex items-center gap-1"><span className="text-white font-bold">{mode.pointsToWin}</span> Pts</span>
+                                                <span className="flex items-center gap-1"><span className="text-white font-bold">{mode.servesBeforeChange}</span> Serves</span>
+                                            </div>
+                                        </div>
                                     </button>
-                                </div>
+                                ))}
+                            </motion.div>
+                        )}
 
-                                <GameSelect
-                                    label="CHALLENGER 02 (Right Side)"
-                                    placeholder="Select P2"
-                                    options={users}
-                                    value={p2}
-                                    onChange={setP2}
-                                    type="user"
-                                    disabledValues={p1 ? [p1] : []}
-                                />
-                            </div>
-
-                            <div className="mt-6 pt-6 border-t border-white/5">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setIsUserDialogOpen(true)}
-                                    className="w-full text-neutral-500 hover:text-white hover:bg-white/5"
-                                >
-                                    <Plus size={14} className="mr-2"/> Register New Profile
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* RIGHT COLUMN: Mode & Start (Takes 7 cols) */}
-                    <div className="lg:col-span-7 space-y-6">
-
-                        {/* Game Mode Carousel Section */}
-                        <div className="bg-neutral-900/50 border border-white/10 backdrop-blur-md rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent" />
-
-                            <h2 className="text-center text-sm font-mono font-bold text-neutral-500 tracking-widest mb-4">SELECT PROTOCOL</h2>
-
-                            <GameModeCarousel
-                                modes={gameModes}
-                                selectedId={modeId}
-                                onSelect={setModeId}
-                            />
-
-                            {/* Match Config Overrides Section */}
-                            <div className="mt-6 flex flex-col gap-4 border-t border-white/10 pt-4">
-                                <h3 className="text-xs font-mono text-neutral-500 uppercase tracking-widest text-center">Protocol Parameters</h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-black/40 rounded-xl p-3 border border-white/5 flex flex-col items-center">
-                                        <label className="text-xs text-neutral-400 mb-2 uppercase">Service Style</label>
-                                        <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/10">
-                                            <button
-                                                className={cn("px-3 py-1 rounded text-xs font-bold transition-all", serveType === 'free' ? "bg-white text-black shadow-md" : "text-neutral-500 hover:text-white")}
-                                                onClick={() => setServeType('free')}
-                                            >
-                                                FREE
-                                            </button>
-                                            <button
-                                                className={cn("px-3 py-1 rounded text-xs font-bold transition-all", serveType === 'cross' ? "bg-purple-500 text-white shadow-md" : "text-neutral-500 hover:text-white")}
-                                                onClick={() => setServeType('cross')}
-                                            >
-                                                CROSS
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                     <div className="bg-black/40 rounded-xl p-3 border border-white/5 flex flex-col items-center">
-                                        <label className="text-xs text-neutral-400 mb-2 uppercase">Deuce Serves</label>
-                                        <div className="flex bg-neutral-900 rounded-lg p-1 border border-white/10 items-center">
-                                            <button
-                                                className={cn("w-8 h-8 rounded flex items-center justify-center text-xs font-bold transition-all hover:bg-white/10 text-white")}
-                                                onClick={() => setServesInDeuce(Math.max(1, servesInDeuce - 1))}
-                                            >
-                                                -
-                                            </button>
-                                            <span className="w-8 text-center font-mono font-bold text-white">{servesInDeuce}</span>
-                                            <button
-                                                className={cn("w-8 h-8 rounded flex items-center justify-center text-xs font-bold transition-all hover:bg-white/10 text-white")}
-                                                onClick={() => setServesInDeuce(servesInDeuce + 1)}
-                                            >
-                                                +
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* START BUTTON - GLITCH EDITION */}
-                        <div className="mt-12 relative z-10 w-full group">
-
-                            {/* Bottone invisibile sopra per il click, ma l'effetto visivo è sotto */}
-                            {/* HO AGGIUNTO IL REF QUI SOTTO */}
-                            <Button
-                                ref={startButtonRef}
-                                className="absolute inset-0 w-full h-24 opacity-0 z-50 cursor-pointer disabled:cursor-not-allowed outline-none focus:ring-4 focus:ring-green-500/50 rounded-xl"
-                                onClick={handleStart}
-                                disabled={!p1 || !p2 || !modeId}
-                            />
-
-                            <div className={cn(
-                                "relative w-full h-24 bg-neutral-900 overflow-hidden rounded-xl transition-all duration-200 pointer-events-none", // pointer-events-none perché il bottone sopra gestisce il click
-                                (!p1 || !p2 || !modeId)
-                                    ? "opacity-50 grayscale cursor-not-allowed border border-neutral-800"
-                                    : "group-hover:scale-[1.02] group-hover:shadow-[0_0_40px_rgba(34,197,94,0.6)] group-focus-within:shadow-[0_0_40px_rgba(34,197,94,0.6)] border border-green-500/50 group-focus-within:border-green-400"
-                            )}>
-
-                                {/* Background Layers for Glitch Effect */}
-                                <div className="absolute inset-0 bg-green-600 translate-x-1 translate-y-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-100 mix-blend-screen animate-pulse"
-                                     style={{ clipPath: 'polygon(0 0, 100% 0, 100% 45%, 0 45%)', transform: 'translate(-2px, 0)' }} />
-                                <div className="absolute inset-0 bg-red-600 -translate-x-1 -translate-y-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-100 mix-blend-screen animate-pulse"
-                                     style={{ clipPath: 'polygon(0 60%, 100% 60%, 100% 100%, 0 100%)', transform: 'translate(2px, 0)' }} />
-
-                                {/* Main Button Body */}
-                                <div className={cn(
-                                    "absolute inset-0 flex items-center justify-center gap-4 bg-black",
-                                    (!p1 || !p2 || !modeId) ? "bg-neutral-800" : "group-hover:bg-neutral-950 group-focus-within:bg-neutral-950"
-                                )}>
-                                    {/* Animated Stripes Background */}
-                                    <div className="absolute inset-0 opacity-20 bg-[linear-gradient(45deg,transparent_25%,rgba(34,197,94,0.3)_50%,transparent_75%,transparent_100%)] bg-[length:250%_250%] animate-[shine_3s_infinite]" />
-
-                                    {/* Scanlines */}
-                                    <div className="absolute inset-0 bg-[linear-gradient(rgba(18,18,18,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10 bg-[length:100%_2px,3px_100%] pointer-events-none opacity-50" />
-
-                                    {/* Content */}
-                                    <div className="relative z-20 flex items-center gap-4 group-hover:animate-[shake_0.5s_infinite] group-focus-within:animate-[shake_0.5s_infinite]">
-                                        <Play
-                                            fill="currentColor"
+                        {/* STEP 1: PLAYERS */}
+                        {step === 1 && (
+                            <motion.div
+                                key="step1"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="bg-neutral-900/30 border border-white/5 rounded-3xl p-8 backdrop-blur-sm"
+                            >
+                                {/* MATCH TYPE TOGGLE */}
+                                <div className="flex justify-center mb-8">
+                                    <div className="bg-neutral-800 p-1 rounded-lg inline-flex relative">
+                                        <div
                                             className={cn(
-                                                "w-8 h-8 transition-colors",
-                                                (!p1 || !p2 || !modeId) ? "text-neutral-600" : "text-green-500 group-hover:text-white group-focus-within:text-white"
+                                                "absolute top-1 bottom-1 w-[120px] bg-neutral-700/80 rounded-md transition-all duration-300",
+                                                isDoubles ? "left-[124px]" : "left-1"
                                             )}
                                         />
-                                        <span className={cn(
-                                            "text-4xl font-black italic tracking-tighter uppercase",
-                                            (!p1 || !p2 || !modeId) ? "text-neutral-600" : "text-white group-hover:text-green-400 group-focus-within:text-green-400 group-hover:drop-shadow-[0_0_10px_rgba(74,222,128,0.8)]"
-                                        )}>
-                                            FIGHT
-                                        </span>
+                                        <button
+                                            onClick={() => setIsDoubles(false)}
+                                            className={cn(
+                                                "relative w-[120px] py-1.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors z-10",
+                                                !isDoubles ? "text-white" : "text-neutral-500 hover:text-neutral-300"
+                                            )}
+                                        >
+                                            <User size={14} /> Singles
+                                        </button>
+                                        <button
+                                            onClick={() => setIsDoubles(true)}
+                                            className={cn(
+                                                "relative w-[120px] py-1.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors z-10",
+                                                isDoubles ? "text-white" : "text-neutral-500 hover:text-neutral-300"
+                                            )}
+                                        >
+                                            <Users size={14} /> Doubles
+                                        </button>
                                     </div>
                                 </div>
 
-                                {/* Decor: Corner Brackets */}
-                                <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-green-500 rounded-tl-sm opacity-50 group-hover:opacity-100 group-focus-within:opacity-100" />
-                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-green-500 rounded-br-sm opacity-50 group-hover:opacity-100 group-focus-within:opacity-100" />
-                            </div>
-                        </div>
+                                <div className="grid grid-cols-1 lg:grid-cols-11 gap-8 items-center">
+                                    {/* TEAM 1 */}
+                                    <div className="lg:col-span-5 space-y-4">
+                                        <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-widest flex items-center gap-2">
+                                            <User size={14} className="text-blue-500" /> {isDoubles ? "Team Blue" : "Challenger 01"}
+                                        </h3>
+                                        <GameSelect
+                                            label=""
+                                            placeholder="Select Player 1"
+                                            options={users}
+                                            value={p1}
+                                            onChange={setP1}
+                                            type="user"
+                                            disabledValues={[p2, p3, p4].filter(Boolean)}
+                                        />
+                                        {isDoubles && (
+                                            <GameSelect
+                                                label=""
+                                                placeholder="Select Partner (P3)"
+                                                options={users}
+                                                value={p3}
+                                                onChange={setP3}
+                                                type="user"
+                                                disabledValues={[p1, p2, p4].filter(Boolean)}
+                                            />
+                                        )}
+                                    </div>
 
-                    </div>
+                                    {/* VS / Swap */}
+                                    <div className="lg:col-span-1 flex flex-col items-center justify-center py-4">
+                                        <div className="w-px h-12 bg-white/10 lg:hidden"></div>
+                                        <button
+                                            onClick={() => {
+                                                const t1 = p1; setP1(p2); setP2(t1);
+                                                if (isDoubles) { const t3 = p3; setP3(p4); setP4(t3); }
+                                            }}
+                                            className="p-3 rounded-full bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 hover:border-neutral-500 transition-all active:scale-95 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                                            aria-label="Swap sides"
+                                        >
+                                            <ArrowRightLeft className="text-neutral-400 group-hover:text-white transition-colors group-hover:rotate-180 duration-500" size={20} />
+                                        </button>
+                                        <div className="w-px h-12 bg-white/10 lg:hidden"></div>
+                                    </div>
 
+                                    {/* TEAM 2 */}
+                                    <div className="lg:col-span-5 space-y-4">
+                                        <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-widest flex items-center gap-2">
+                                            <User size={14} className="text-red-500" /> {isDoubles ? "Team Red" : "Challenger 02"}
+                                        </h3>
+                                        <GameSelect
+                                            label=""
+                                            placeholder="Select Player 2"
+                                            options={users}
+                                            value={p2}
+                                            onChange={setP2}
+                                            type="user"
+                                            disabledValues={[p1, p3, p4].filter(Boolean)}
+                                        />
+                                        {isDoubles && (
+                                            <GameSelect
+                                                label=""
+                                                placeholder="Select Partner (P4)"
+                                                options={users}
+                                                value={p4}
+                                                onChange={setP4}
+                                                type="user"
+                                                disabledValues={[p1, p2, p3].filter(Boolean)}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="mt-12 flex justify-between items-center border-t border-white/5 pt-8">
+                                    <Button
+                                        variant="ghost"
+                                        onClick={() => setIsUserDialogOpen(true)}
+                                        className="text-neutral-500 hover:text-white hover:bg-white/5"
+                                    >
+                                        <Plus className="mr-2 h-4 w-4" /> Register New Player
+                                    </Button>
+                                    <Button
+                                        onClick={() => setStep(2)}
+                                        disabled={!p1 || !p2 || (isDoubles && (!p3 || !p4))}
+                                        className={cn(
+                                            "bg-white text-black hover:bg-neutral-200 font-bold px-8 h-12 text-lg transition-all",
+                                            (!p1 || !p2 || (isDoubles && (!p3 || !p4))) ? "opacity-50 cursor-not-allowed" : "shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                                        )}
+                                    >
+                                        Done <ChevronRight className="ml-2" />
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* STEP 2: CONFIG & START */}
+                        {step === 2 && (
+                            <motion.div
+                                key="step2"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="max-w-2xl mx-auto space-y-8"
+                            >
+                                {/* Summary Card */}
+                                <div className="bg-neutral-900/50 border border-white/10 rounded-2xl p-6 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-3 rounded-xl bg-neutral-800">
+                                            <Trophy size={20} className="text-neutral-400" />
+                                        </div>
+                                        <div>
+                                            <div className="text-sm text-neutral-500 uppercase font-bold">Protocol</div>
+                                            <div className="text-xl font-bold text-white">{gameModes.find(m => m._id === modeId)?.name}</div>
+                                        </div>
+                                    </div>
+                                    <Button size="sm" variant="ghost" className="text-neutral-500 hover:text-white" onClick={() => setStep(0)}>Change</Button>
+                                </div>
+
+                                {/* Rules Config */}
+                                <div className="bg-neutral-900/50 border border-white/10 rounded-2xl p-6 space-y-6">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <Settings size={18} className="text-neutral-500" />
+                                        <h3 className="font-bold text-neutral-300 uppercase tracking-widest text-sm">Fine-Tune Rules</h3>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div className="space-y-3">
+                                            <label className="text-xs text-neutral-500 font-bold uppercase">Service Style</label>
+                                            <div className="flex bg-neutral-900/80 p-1 rounded-lg border border-white/5">
+                                                <button
+                                                    onClick={() => setServeType('free')}
+                                                    className={cn("flex-1 py-2 text-xs font-bold rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50", serveType === 'free' ? "bg-neutral-800 text-white shadow-md" : "text-neutral-500 hover:text-white")}
+                                                >
+                                                    FREE
+                                                </button>
+                                                <button
+                                                    onClick={() => setServeType('cross')}
+                                                    className={cn("flex-1 py-2 text-xs font-bold rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50", serveType === 'cross' ? "bg-neutral-800 text-purple-400 shadow-md" : "text-neutral-500 hover:text-white")}
+                                                >
+                                                    CROSS
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <label className="text-xs text-neutral-500 font-bold uppercase">Deuce Serves</label>
+                                            <div className="flex items-center gap-3">
+                                                <button onClick={() => setServesInDeuce(Math.max(1, servesInDeuce - 1))} className="w-10 h-10 rounded-lg bg-neutral-900 border border-white/5 hover:bg-neutral-800 text-white flex items-center justify-center font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50">-</button>
+                                                <div className="flex-1 text-center font-mono font-bold text-xl">{servesInDeuce}</div>
+                                                <button onClick={() => setServesInDeuce(servesInDeuce + 1)} className="w-10 h-10 rounded-lg bg-neutral-900 border border-white/5 hover:bg-neutral-800 text-white flex items-center justify-center font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50">+</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* START BUTTON */}
+                                <div className="pt-4 relative group">
+                                    <Button
+                                        ref={startButtonRef}
+                                        className="absolute inset-0 w-full h-20 opacity-0 z-50 cursor-pointer"
+                                        onClick={handleStart}
+                                    />
+                                    <div className="w-full h-20 bg-green-600 rounded-xl flex items-center justify-center gap-4 group-hover:bg-green-500 group-hover:scale-[1.02] group-hover:shadow-[0_0_30px_rgba(34,197,94,0.5)] transition-all duration-300">
+                                        <Swords size={28} className="text-black" />
+                                        <span className="text-3xl font-black italic text-black tracking-tighter">FIGHT</span>
+                                    </div>
+                                </div>
+
+                            </motion.div>
+                        )}
+
+                    </AnimatePresence>
                 </div>
             </div>
 
-            {/* Create User Dialog (Invariato) */}
+            {/* Create User Dialog */}
             <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
                 <DialogContent className="bg-[#0f0f0f] text-white border-neutral-800 sm:max-w-md p-6">
                     <DialogHeader>
@@ -374,7 +461,6 @@ const MatchSetup = () => {
                         <DialogDescription className="text-neutral-500">Initialize a new combat profile.</DialogDescription>
                     </DialogHeader>
 
-                    {/* ... Dialog Content ... */}
                     <div className="space-y-6 py-4">
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">Codename</label>
