@@ -8,7 +8,9 @@ export const matchService = {
             player2Id: Number(player2Id), 
             gameModeId: Number(gameModeId),
             servesInDeuce: overrides.servesInDeuce ? Number(overrides.servesInDeuce) : null,
-            serveType: overrides.serveType || null
+            serveType: overrides.serveType || null,
+            player3Id: overrides.player3Id ? Number(overrides.player3Id) : null,
+            player4Id: overrides.player4Id ? Number(overrides.player4Id) : null
         });
     },
     addPoint: async (matchId, playerId) => {

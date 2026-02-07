@@ -75,6 +75,22 @@ async fn populate_match(pool: &Pool<Sqlite>, match_data: Match) -> Result<Popula
         None
     };
 
+    let p3: Option<User> = if let Some(p3_id) = match_data.player3_id {
+         sqlx::query_as("SELECT * FROM users WHERE id = ?")
+            .bind(p3_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?
+    } else { None };
+
+    let p4: Option<User> = if let Some(p4_id) = match_data.player4_id {
+         sqlx::query_as("SELECT * FROM users WHERE id = ?")
+            .bind(p4_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?
+    } else { None };
+
     let events: Vec<MatchEvent> =
         serde_json::from_str(&match_data.events).unwrap_or_default();
     let match_rules: MatchRules =
@@ -90,6 +106,8 @@ async fn populate_match(pool: &Pool<Sqlite>, match_data: Match) -> Result<Popula
         id: match_data.id,
         player1: p1,
         player2: p2,
+        player3: p3,
+        player4: p4,
         game_mode: gm,
         status: match_data.status,
         score: ScoreSnapshot {
@@ -248,8 +266,10 @@ pub async fn start_match(
     game_mode_id: i64,
     serves_in_deuce: Option<i64>,
     serve_type: Option<String>,
+    player3_id: Option<i64>,
+    player4_id: Option<i64>,
 ) -> Result<PopulatedMatch, String> {
-    println!("Starting match: p1={}, p2={}, mode={}", player1_id, player2_id, game_mode_id);
+    println!("Starting match: p1={}, p2={}, p3={:?}, p4={:?}, mode={}", player1_id, player2_id, player3_id, player4_id, game_mode_id);
     let gm: GameMode = sqlx::query_as("SELECT * FROM game_modes WHERE id = ?")
         .bind(game_mode_id)
         .fetch_one(&state.db)
@@ -265,10 +285,12 @@ pub async fn start_match(
     let rules_json = serde_json::to_string(&match_rules).unwrap();
 
     let result = sqlx::query(
-        "INSERT INTO matches (player1_id, player2_id, game_mode_id, status, match_rules, events) VALUES (?, ?, ?, 'in_progress', ?, '[]')"
+        "INSERT INTO matches (player1_id, player2_id, player3_id, player4_id, game_mode_id, status, match_rules, events) VALUES (?, ?, ?, ?, ?, 'in_progress', ?, '[]')"
     )
     .bind(player1_id)
     .bind(player2_id)
+    .bind(player3_id)
+    .bind(player4_id)
     .bind(game_mode_id)
     .bind(rules_json)
     .execute(&state.db)
@@ -305,17 +327,17 @@ pub async fn add_point(
         return Err("Match is finished".to_string());
     }
 
-    // 2. Identify Player
-    let is_p1 = match_data.player1_id == player_id;
-    let is_p2 = match_data.player2_id == player_id;
+    // 2. Identify Player side
+    let is_p1_side = match_data.player1_id == player_id || match_data.player3_id == Some(player_id);
+    let is_p2_side = match_data.player2_id == player_id || match_data.player4_id == Some(player_id);
 
-    if !is_p1 && !is_p2 {
+    if !is_p1_side && !is_p2_side {
         return Err("User is not in this match".to_string());
     }
 
     // 3. Update Score
-    if is_p1 { match_data.score_p1 += 1; }
-    if is_p2 { match_data.score_p2 += 1; }
+    if is_p1_side { match_data.score_p1 += 1; }
+    if is_p2_side { match_data.score_p2 += 1; }
 
     // 4. Update Events
     let mut events: Vec<MatchEvent> = serde_json::from_str(&match_data.events).unwrap_or_default();
@@ -342,22 +364,39 @@ pub async fn add_point(
     if let Some(w) = winner_key {
         match_data.status = "finished".to_string();
         match_data.end_time = Some(Utc::now());
-        match_data.winner_id = Some(if w == "p1" { match_data.player1_id } else { match_data.player2_id });
+        
+        // Winner ID defaults to the 'Captain' (P1 or P2) for database tracking of "Winning Side"
+        let winner_captain_id = if w == "p1" { match_data.player1_id } else { match_data.player2_id };
+        match_data.winner_id = Some(winner_captain_id);
 
-        // Update User Wins
+        // Update WINNERS (Captain + Partner)
         sqlx::query("UPDATE users SET wins = wins + 1, matches_played = matches_played + 1 WHERE id = ?")
-            .bind(match_data.winner_id)
+            .bind(winner_captain_id)
             .execute(&state.db)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await.map_err(|e| e.to_string())?;
 
-        // Update Loser matches_played
-        let loser_id = if w == "p1" { match_data.player2_id } else { match_data.player1_id };
+        let winner_partner_id = if w == "p1" { match_data.player3_id } else { match_data.player4_id };
+        if let Some(pid) = winner_partner_id {
+             sqlx::query("UPDATE users SET wins = wins + 1, matches_played = matches_played + 1 WHERE id = ?")
+                .bind(pid)
+                .execute(&state.db)
+                .await.map_err(|e| e.to_string())?;
+        }
+
+        // Update LOSERS (Captain + Partner)
+        let loser_captain_id = if w == "p1" { match_data.player2_id } else { match_data.player1_id };
         sqlx::query("UPDATE users SET matches_played = matches_played + 1 WHERE id = ?")
-            .bind(loser_id)
+            .bind(loser_captain_id)
             .execute(&state.db)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await.map_err(|e| e.to_string())?;
+
+        let loser_partner_id = if w == "p1" { match_data.player4_id } else { match_data.player3_id };
+        if let Some(pid) = loser_partner_id {
+             sqlx::query("UPDATE users SET matches_played = matches_played + 1 WHERE id = ?")
+                .bind(pid)
+                .execute(&state.db)
+                .await.map_err(|e| e.to_string())?;
+        }
     }
 
     // 6. Save
@@ -454,12 +493,16 @@ pub async fn get_match(state: State<'_, AppState>, id: i64) -> Result<PopulatedM
 
 #[tauri::command]
 pub async fn get_user_matches(state: State<'_, AppState>, user_id: i64) -> Result<Vec<PopulatedMatch>, String> {
-    let matches: Vec<Match> = sqlx::query_as("SELECT * FROM matches WHERE player1_id = ? OR player2_id = ? ORDER BY start_time DESC")
-        .bind(user_id)
-        .bind(user_id)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    let matches: Vec<Match> = sqlx::query_as(
+        "SELECT * FROM matches WHERE player1_id = ? OR player2_id = ? OR player3_id = ? OR player4_id = ? ORDER BY start_time DESC"
+    )
+    .bind(user_id)
+    .bind(user_id)
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| e.to_string())?;
 
     let mut populated = Vec::new();
     for m in matches {
@@ -525,12 +568,17 @@ pub async fn get_user_statistics(state: State<'_, AppState>, user_id: i64) -> Re
         .map_err(|_| "User not found".to_string())?;
 
     // 2. Fetch matches (finished only)
-    let matches: Vec<Match> = sqlx::query_as("SELECT * FROM matches WHERE (player1_id = ? OR player2_id = ?) AND status = 'finished' ORDER BY start_time ASC")
-        .bind(user_id)
-        .bind(user_id)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 2. Fetch matches (finished only)
+    let matches: Vec<Match> = sqlx::query_as(
+        "SELECT * FROM matches WHERE (player1_id = ? OR player2_id = ? OR player3_id = ? OR player4_id = ?) AND status = 'finished' ORDER BY start_time ASC"
+    )
+    .bind(user_id)
+    .bind(user_id)
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| e.to_string())?;
     
     // 3. Helper Maps
     let users: Vec<User> = sqlx::query_as("SELECT * FROM users").fetch_all(&state.db).await.unwrap_or(vec![]);
@@ -555,14 +603,18 @@ pub async fn get_user_statistics(state: State<'_, AppState>, user_id: i64) -> Re
     let mut recent_matches = Vec::new();
     
     for m in matches {
-        let is_p1 = m.player1_id == user_id;
-        let p_score = if is_p1 { m.score_p1 } else { m.score_p2 };
-        let opp_score = if is_p1 { m.score_p2 } else { m.score_p1 };
-        let opponent_id = if is_p1 { m.player2_id } else { m.player1_id };
-        let opponent_name = user_map.get(&opponent_id).cloned().unwrap_or("Unknown".to_string());
-        let mode_name = mode_map_name.get(&m.game_mode_id).cloned().unwrap_or("Unknown".to_string());
+        let is_p1_side = m.player1_id == user_id || m.player3_id == Some(user_id);
         
-        let is_win = m.winner_id == Some(user_id);
+        let p_score = if is_p1_side { m.score_p1 } else { m.score_p2 };
+        let opp_score = if is_p1_side { m.score_p2 } else { m.score_p1 };
+        
+        let opponent_id = if is_p1_side { m.player2_id } else { m.player1_id }; // Default to Captain
+        let opponent_name = user_map.get(&opponent_id).cloned().unwrap_or("Unknown".to_string());
+        
+        // Use captain check for winner determination
+        let is_win = if is_p1_side { m.winner_id == Some(m.player1_id) } else { m.winner_id == Some(m.player2_id) }; 
+        
+        let mode_name = mode_map_name.get(&m.game_mode_id).cloned().unwrap_or("Unknown".to_string());
         
         pts_scored += p_score;
         pts_conceded += opp_score;

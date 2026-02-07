@@ -1,0 +1,2 @@
+ALTER TABLE matches ADD COLUMN player3_id INTEGER REFERENCES users(id);
+ALTER TABLE matches ADD COLUMN player4_id INTEGER REFERENCES users(id);

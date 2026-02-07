@@ -25,18 +25,6 @@ pub fn run() {
 
       Ok(())
     })
-    .plugin(
-        tauri_plugin_sql::Builder::default()
-            .add_migrations("sqlite:pingpong.db", vec![
-                tauri_plugin_sql::Migration {
-                    version: 1,
-                    description: "create_initial_tables",
-                    sql: include_str!("../migrations/1_init.sql"),
-                    kind: tauri_plugin_sql::MigrationKind::Up,
-                }
-            ])
-            .build()
-    )
     .invoke_handler(tauri::generate_handler![
         commands::get_users,
         commands::create_user,

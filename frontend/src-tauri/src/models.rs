@@ -62,6 +62,8 @@ pub struct Match {
     pub id: i64,
     pub player1_id: i64,
     pub player2_id: i64,
+    pub player3_id: Option<i64>, // Doubles partner for P1
+    pub player4_id: Option<i64>, // Doubles partner for P2
     pub game_mode_id: i64,
     pub status: String, // 'in_progress', 'finished', 'abandoned'
     pub score_p1: i64,
@@ -107,6 +109,8 @@ pub struct PopulatedMatch {
     pub id: i64,
     pub player1: User,
     pub player2: User,
+    pub player3: Option<User>,
+    pub player4: Option<User>,
     pub game_mode: GameMode,
     pub status: String,
     pub score: ScoreSnapshot,

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button as ButtonOriginal } from "@/components/ui/button";
 import { Dialog as DialogOriginal, DialogContent as DialogContentOriginal, DialogHeader as DialogHeaderOriginal, DialogTitle as DialogTitleOriginal, DialogDescription as DialogDescriptionOriginal, DialogFooter as DialogFooterOriginal } from "@/components/ui/dialog";
 import { Input as InputOriginal } from "@/components/ui/input";
-import { Play, Plus, Swords, ArrowRightLeft, ChevronRight, ChevronLeft, Settings, Trophy, User } from "lucide-react";
+import { Play, Plus, Swords, ArrowRightLeft, ChevronRight, ChevronLeft, Settings, Trophy, User, Users } from "lucide-react";
 import { userService } from "@/services/userService";
 import { gameModeService } from "@/services/gameModeService";
 import { matchService } from "@/services/matchService";
@@ -35,6 +35,9 @@ const MatchSetup = () => {
     // Selection State
     const [p1, setP1] = useState("");
     const [p2, setP2] = useState("");
+    const [p3, setP3] = useState(""); // Partner for P1
+    const [p4, setP4] = useState(""); // Partner for P2
+    const [isDoubles, setIsDoubles] = useState(false);
     const [modeId, setModeId] = useState("");
 
     // New Match Config Overrides
@@ -96,12 +99,18 @@ const MatchSetup = () => {
 
         try {
             const minAnimationTime = new Promise(resolve => setTimeout(resolve, 3000));
-            const overrides = { serveType, servesInDeuce };
+            const overrides = {
+                serveType,
+                servesInDeuce,
+                player3Id: isDoubles ? p3 : null,
+                player4Id: isDoubles ? p4 : null
+            };
             const startMatchPromise = matchService.startMatch(p1, p2, modeId, overrides);
             const [_, match] = await Promise.all([minAnimationTime, startMatchPromise]);
             navigate(`/game/${match._id}`);
         } catch (err) {
             console.error("Failed to start match", err);
+            alert(`Failed to start match: ${err}`);
             setIsTransitioning(false);
         }
     };
@@ -240,11 +249,41 @@ const MatchSetup = () => {
                                 exit={{ opacity: 0, x: -20 }}
                                 className="bg-neutral-900/30 border border-white/5 rounded-3xl p-8 backdrop-blur-sm"
                             >
+                                {/* MATCH TYPE TOGGLE */}
+                                <div className="flex justify-center mb-8">
+                                    <div className="bg-neutral-800 p-1 rounded-lg inline-flex relative">
+                                        <div
+                                            className={cn(
+                                                "absolute top-1 bottom-1 w-[120px] bg-neutral-700/80 rounded-md transition-all duration-300",
+                                                isDoubles ? "left-[124px]" : "left-1"
+                                            )}
+                                        />
+                                        <button
+                                            onClick={() => setIsDoubles(false)}
+                                            className={cn(
+                                                "relative w-[120px] py-1.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors z-10",
+                                                !isDoubles ? "text-white" : "text-neutral-500 hover:text-neutral-300"
+                                            )}
+                                        >
+                                            <User size={14} /> Singles
+                                        </button>
+                                        <button
+                                            onClick={() => setIsDoubles(true)}
+                                            className={cn(
+                                                "relative w-[120px] py-1.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors z-10",
+                                                isDoubles ? "text-white" : "text-neutral-500 hover:text-neutral-300"
+                                            )}
+                                        >
+                                            <Users size={14} /> Doubles
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="grid grid-cols-1 lg:grid-cols-11 gap-8 items-center">
-                                    {/* P1 */}
-                                    <div className="lg:col-span-5">
-                                        <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <User size={14} className="text-blue-500" /> Challenger 01
+                                    {/* TEAM 1 */}
+                                    <div className="lg:col-span-5 space-y-4">
+                                        <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-widest flex items-center gap-2">
+                                            <User size={14} className="text-blue-500" /> {isDoubles ? "Team Blue" : "Challenger 01"}
                                         </h3>
                                         <GameSelect
                                             label=""
@@ -253,27 +292,41 @@ const MatchSetup = () => {
                                             value={p1}
                                             onChange={setP1}
                                             type="user"
-                                            disabledValues={p2 ? [p2] : []}
+                                            disabledValues={[p2, p3, p4].filter(Boolean)}
                                         />
+                                        {isDoubles && (
+                                            <GameSelect
+                                                label=""
+                                                placeholder="Select Partner (P3)"
+                                                options={users}
+                                                value={p3}
+                                                onChange={setP3}
+                                                type="user"
+                                                disabledValues={[p1, p2, p4].filter(Boolean)}
+                                            />
+                                        )}
                                     </div>
 
                                     {/* VS / Swap */}
-                                    <div className="lg:col-span-1 flex flex-col items-center justify-center">
+                                    <div className="lg:col-span-1 flex flex-col items-center justify-center py-4">
                                         <div className="w-px h-12 bg-white/10 lg:hidden"></div>
                                         <button
-                                            onClick={() => { const t = p1; setP1(p2); setP2(t); }}
+                                            onClick={() => {
+                                                const t1 = p1; setP1(p2); setP2(t1);
+                                                if (isDoubles) { const t3 = p3; setP3(p4); setP4(t3); }
+                                            }}
                                             className="p-3 rounded-full bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 hover:border-neutral-500 transition-all active:scale-95 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                                            aria-label="Swap players"
+                                            aria-label="Swap sides"
                                         >
                                             <ArrowRightLeft className="text-neutral-400 group-hover:text-white transition-colors group-hover:rotate-180 duration-500" size={20} />
                                         </button>
                                         <div className="w-px h-12 bg-white/10 lg:hidden"></div>
                                     </div>
 
-                                    {/* P2 */}
-                                    <div className="lg:col-span-5">
-                                        <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <User size={14} className="text-red-500" /> Challenger 02
+                                    {/* TEAM 2 */}
+                                    <div className="lg:col-span-5 space-y-4">
+                                        <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-widest flex items-center gap-2">
+                                            <User size={14} className="text-red-500" /> {isDoubles ? "Team Red" : "Challenger 02"}
                                         </h3>
                                         <GameSelect
                                             label=""
@@ -282,8 +335,19 @@ const MatchSetup = () => {
                                             value={p2}
                                             onChange={setP2}
                                             type="user"
-                                            disabledValues={p1 ? [p1] : []}
+                                            disabledValues={[p1, p3, p4].filter(Boolean)}
                                         />
+                                        {isDoubles && (
+                                            <GameSelect
+                                                label=""
+                                                placeholder="Select Partner (P4)"
+                                                options={users}
+                                                value={p4}
+                                                onChange={setP4}
+                                                type="user"
+                                                disabledValues={[p1, p2, p3].filter(Boolean)}
+                                            />
+                                        )}
                                     </div>
                                 </div>
 
@@ -297,10 +361,10 @@ const MatchSetup = () => {
                                     </Button>
                                     <Button
                                         onClick={() => setStep(2)}
-                                        disabled={!p1 || !p2}
+                                        disabled={!p1 || !p2 || (isDoubles && (!p3 || !p4))}
                                         className={cn(
                                             "bg-white text-black hover:bg-neutral-200 font-bold px-8 h-12 text-lg transition-all",
-                                            (!p1 || !p2) ? "opacity-50 cursor-not-allowed" : "shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                                            (!p1 || !p2 || (isDoubles && (!p3 || !p4))) ? "opacity-50 cursor-not-allowed" : "shadow-[0_0_20px_rgba(255,255,255,0.2)]"
                                         )}
                                     >
                                         Done <ChevronRight className="ml-2" />
